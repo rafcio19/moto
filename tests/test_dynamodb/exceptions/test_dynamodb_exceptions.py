@@ -807,6 +807,42 @@ def test_transact_write_items_multiple_operations_fail():
 
 
 @mock_dynamodb
+def test_transact_write_items_duplicate_op():
+    # Setup
+    schema = {
+        "KeySchema": [{"AttributeName": "id", "KeyType": "HASH"}],
+        "AttributeDefinitions": [{"AttributeName": "id", "AttributeType": "S"}],
+    }
+    dynamodb = boto3.client("dynamodb", region_name="us-east-1")
+    table_name = "test-table"
+    dynamodb.create_table(TableName=table_name, BillingMode="PAY_PER_REQUEST", **schema)
+
+    # Execute
+    with pytest.raises(ClientError) as exc:
+        dynamodb.transact_write_items(
+            TransactItems=[
+                {
+                    "Put": {
+                        "Item": {"pk": {"S": 'test'}, "sk": {"S": 'test'}},
+                        "TableName": table_name,
+                    },
+                    "Put": {
+                        "Key": {"pk": {"S": 'test'}, "sk": {"S": 'test'}},
+                        "TableName": table_name,
+                    }
+                }
+            ]
+        )
+    # Verify
+    err = exc.value.response["Error"]
+    assert err["Code"] == "ValidationException"
+    assert (
+        err["Message"]
+        == "TransactItems can only contain one of Check, Put, Update or Delete"
+    )
+
+
+@mock_dynamodb
 def test_transact_write_items_with_empty_gsi_key():
     client = boto3.client("dynamodb", "us-east-2")
 
